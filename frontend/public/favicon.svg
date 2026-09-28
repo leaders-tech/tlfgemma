@@ -1,0 +1,8 @@
+<!-- TLF-Gemma identity icon. Edit for branding; copy for other app icon sizes. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="TLF Gemma">
+  <path d="M16 5 H48 C54.627 5 60 10.373 60 17 V39 C60 45.627 54.627 51 48 51 H31 L20 60 V51 H16 C9.373 51 4 45.627 4 39 V17 C4 10.373 9.373 5 16 5 Z" fill="#073B5C"/>
+  <path d="M20 23 L26 15 H38 L44 23 L32 43 Z" fill="#FFFFFF"/>
+  <path d="M20 23 L26 15 L32 23 L32 43 Z" fill="#55C6CF"/>
+  <path d="M26 15 H38 L32 23 Z" fill="#1676A2"/>
+  <path d="M38 15 L44 23 L32 43 L32 23 Z" fill="#E52B35"/>
+</svg>

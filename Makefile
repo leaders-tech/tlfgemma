@@ -23,8 +23,6 @@ AGENT_RUNTIME_DIR_ABS := $(shell python3 -c 'from pathlib import Path; print(Pat
 AGENT_COOKIE_JAR := $(AGENT_RUNTIME_DIR_ABS)/cookies.txt
 AGENT_BACKEND_PID := $(AGENT_RUNTIME_DIR_ABS)/backend.pid
 AGENT_FRONTEND_PID := $(AGENT_RUNTIME_DIR_ABS)/frontend.pid
-ALOGIN_USER := $(if $(filter command line,$(origin USER)),$(USER),user)
-ALOGIN_PASS := $(if $(filter command line,$(origin PASS)),$(PASS),user)
 APOST_BODY := $(if $(filter command line,$(origin BODY)),$(BODY),{})
 PY_RUNTIME_DEPS := $(shell python3 -c 'import re, tomllib, pathlib; data = tomllib.loads(pathlib.Path("pyproject.toml").read_text()); print(" ".join(re.match(r"[A-Za-z0-9._-]+", dep).group(0) for dep in data["project"]["dependencies"]))')
 PY_DEV_DEPS := $(shell python3 -c 'import re, tomllib, pathlib; data = tomllib.loads(pathlib.Path("pyproject.toml").read_text()); print(" ".join(re.match(r"[A-Za-z0-9._-]+", dep).group(0) for dep in data["dependency-groups"]["dev"]))')
@@ -58,7 +56,7 @@ help:
 
 setup:
 	uv sync --all-groups
-	cd frontend && npm install && npx playwright install
+	cd frontend && npm ci && npx playwright install
 	test -f .env || cp .env.example .env
 	test -f .agent.env || cp .agent.env.example .agent.env
 	test -f .docker.env || cp .docker.env.example .docker.env
@@ -143,9 +141,8 @@ abrowser:
 
 alogin:
 	$(CHECK_AGENT_ENV)
-	mkdir -p "$(AGENT_RUNTIME_DIR_ABS)"
-	BODY="$$(python3 -c 'import json, sys; print(json.dumps({"username": sys.argv[1], "password": sys.argv[2]}))' "$(ALOGIN_USER)" "$(ALOGIN_PASS)")"; \
-	curl -sS -c "$(AGENT_COOKIE_JAR)" -b "$(AGENT_COOKIE_JAR)" -H "Origin: $(AGENT_FRONTEND_URL)" -H "Content-Type: application/json" -X POST "$(AGENT_BACKEND_URL)/api/auth/login" --data "$$BODY"
+	@echo "Open $(AGENT_FRONTEND_URL) and sign in with TLF. Password login is not available."
+	open $(AGENT_FRONTEND_URL)
 
 apost:
 	$(CHECK_AGENT_ENV)

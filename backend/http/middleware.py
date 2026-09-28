@@ -21,6 +21,8 @@ EXPECTED_ANONYMOUS_401_PATHS = {"/api/auth/me", "/api/auth/refresh"}
 
 def add_cors_headers(request: web.Request, response: web.StreamResponse) -> web.StreamResponse:
     settings: Settings = request.app["settings"]
+    if request.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
     origin = request.headers.get("Origin", "").rstrip("/")
     # Production stays same-origin behind a reverse proxy. These CORS headers are only for localhost-style dev splits.
     if settings.mode != "prod" and origin in settings.allowed_origins:
@@ -67,6 +69,8 @@ async def request_logging_middleware(request: web.Request, handler):
 
 @web.middleware
 async def cors_middleware(request: web.Request, handler):
+    if request.method == "POST":
+        require_allowed_origin(request)
     if request.method == "OPTIONS":
         response = web.Response(status=204)
     else:

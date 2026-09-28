@@ -1,68 +1,87 @@
-"""Handle non-auth JSON endpoints such as health, notes, and admin user list.
+"""Expose chat, review and reset endpoints. Edit for API behavior; copy route patterns for new features."""
 
-Edit this file when app endpoints outside the auth and websocket groups change.
-Copy the route pattern here when you add another endpoint group backed by backend/db code.
-"""
-
-from __future__ import annotations
-
-from aiohttp import web
-
-from backend.auth.access import require_admin, require_user
-from backend.db.notes import delete_note, list_notes, save_note
-from backend.db.users import list_users
+import asyncio
+from uuid import UUID
+from backend.auth.access import require_user, require_reviewer, require_admin, can_review
+from backend.chat import generate, stop_generations
 from backend.http.json_api import AppError, ok, read_json
-from backend.http.middleware import require_allowed_origin
 
 
-async def health(request: web.Request) -> web.Response:
+async def health(request):
     return ok({"status": "ok"})
 
 
-async def notes_list(request: web.Request) -> web.Response:
-    user = require_user(request)
-    notes = await list_notes(request.app["db"], user["id"])
-    return ok({"notes": notes})
+async def send(request):
+    user = await require_user(request)
+    data = await read_json(request)
+    prompt, request_id = data.get("text"), data.get("request_id")
+    if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 1000:
+        raise AppError(400, "invalid_message", "Write a message between 1 and 1000 characters.")
+    try:
+        request_id = str(UUID(request_id))
+    except ValueError, TypeError, AttributeError:
+        raise AppError(400, "invalid_request_id", "A valid request ID is required.") from None
+    if not request.app["settings"].openrouter_api_key:
+        raise AppError(503, "model_not_configured", "The model is not configured yet.")
+    async with request.app["operations"]:
+        row, created = await request.app["store"].reserve(user["id"], request_id, prompt)
+        if created:
+            task = asyncio.create_task(generate(request.app, row))
+            request.app["generations"][row["id"]] = task
+
+            def finished(done):
+                request.app["generations"].pop(row["id"], None)
+                if not done.cancelled():
+                    done.exception()
+
+            task.add_done_callback(finished)
+        quota = await request.app["store"].quota(user["id"])
+    return ok({"message": row, "quota": quota}, 202 if created else 200)
 
 
-async def notes_save(request: web.Request) -> web.Response:
-    require_allowed_origin(request)
-    user = require_user(request)
-    payload = await read_json(request)
-    note_id = payload.get("id")
-    text = str(payload.get("text", "")).strip()
-    if not text:
-        raise AppError(400, "bad_request", "Note text is required.")
-    if note_id is not None and not isinstance(note_id, int):
-        raise AppError(400, "bad_request", "Note id must be an integer.")
-    note = await save_note(request.app["db"], user["id"], text, note_id)
-    await request.app["ws_hub"].send_to_user(user["id"], {"type": "notes.changed", "note": note})
-    return ok({"note": note})
+def integer(data, key, default=None):
+    value = data.get(key, default)
+    if value is not None and (type(value) is not int or value < 1):
+        raise AppError(400, "invalid_cursor", "Invalid user or page ID.")
+    return value
 
 
-async def notes_delete(request: web.Request) -> web.Response:
-    require_allowed_origin(request)
-    user = require_user(request)
-    payload = await read_json(request)
-    note_id = payload.get("id")
-    if not isinstance(note_id, int):
-        raise AppError(400, "bad_request", "Note id must be an integer.")
-    deleted = await delete_note(request.app["db"], user["id"], note_id)
-    if not deleted:
-        raise AppError(404, "not_found", "Note does not exist.")
-    await request.app["ws_hub"].send_to_user(user["id"], {"type": "notes.changed", "note_id": note_id})
-    return ok({"deleted": True, "id": note_id})
+async def history(request):
+    user = await require_user(request)
+    data = await read_json(request)
+    target = integer(data, "user_id", user["id"])
+    if target != user["id"] and not can_review(user):
+        raise AppError(403, "not_allowed", "You can only read your own chat.")
+    return ok(await request.app["store"].history(target, integer(data, "before")))
 
 
-async def admin_users_list(request: web.Request) -> web.Response:
-    require_admin(request)
-    users = await list_users(request.app["db"])
-    return ok({"users": users})
+async def quota(request):
+    user = await require_user(request)
+    return ok(await request.app["store"].quota(user["id"]))
 
 
-def setup_api_routes(app: web.Application) -> None:
+async def users(request):
+    await require_reviewer(request)
+    data = await read_json(request)
+    search = data.get("search", "")
+    if not isinstance(search, str) or len(search) > 320:
+        raise AppError(400, "bad_request", "Invalid email search.")
+    return ok(await request.app["store"].users(search, integer(data, "after") or 0))
+
+
+async def clear(request):
+    await require_admin(request)
+    data = await read_json(request)
+    if data.get("confirm") != "CLEAR ALL HISTORY":
+        raise AppError(400, "confirmation_required", "Confirm clearing all history.")
+    async with request.app["operations"]:
+        await stop_generations(request.app)
+        await request.app["store"].clear()
+        await request.app["ws_hub"].broadcast({"type": "history.cleared"})
+    return ok({"cleared": True})
+
+
+def setup_api_routes(app):
     app.router.add_get("/api/health", health)
-    app.router.add_post("/api/notes/list", notes_list)
-    app.router.add_post("/api/notes/save", notes_save)
-    app.router.add_post("/api/notes/delete", notes_delete)
-    app.router.add_post("/api/admin/users/list", admin_users_list)
+    for path, handler in [("/chat/send", send), ("/chat/history", history), ("/chat/quota", quota), ("/review/users", users), ("/admin/clear", clear)]:
+        app.router.add_post("/api" + path, handler)

@@ -1,71 +1,118 @@
-"""Test note endpoint behavior against a temporary backend test database.
+"""Test the chat behavior replacing template notes. Edit for chat rules; copy cases for new API behavior."""
 
-Edit this file when note routes or note queries change.
-Copy a test pattern here when you add tests for another small CRUD feature.
-"""
-
-from __future__ import annotations
-
+import asyncio
+from datetime import timedelta
+from uuid import uuid4
 import pytest
-
-from backend.tests.conftest import login
-
-
-@pytest.mark.asyncio
-async def test_notes_crud(client, create_user, auth_headers) -> None:
-    await create_user("user", "user")
-    await login(client, "user", "user", auth_headers)
-
-    save_response = await client.post("/api/notes/save", json={"text": "First note"}, headers=auth_headers)
-    assert save_response.status == 200
-    note = (await save_response.json())["data"]["note"]
-
-    list_response = await client.post("/api/notes/list", json={})
-    assert list_response.status == 200
-    listed_notes = (await list_response.json())["data"]["notes"]
-    assert listed_notes[0]["text"] == "First note"
-
-    update_response = await client.post("/api/notes/save", json={"id": note["id"], "text": "Updated note"}, headers=auth_headers)
-    assert update_response.status == 200
-    assert (await update_response.json())["data"]["note"]["text"] == "Updated note"
-
-    delete_response = await client.post("/api/notes/delete", json={"id": note["id"]}, headers=auth_headers)
-    assert delete_response.status == 200
+from backend.db.store import now
+from backend.http.json_api import AppError
 
 
-@pytest.mark.asyncio
-async def test_notes_are_isolated_per_user(client, create_user, auth_headers) -> None:
-    await create_user("user", "user")
-    await create_user("second", "second")
-
-    await login(client, "user", "user", auth_headers)
-    save_response = await client.post("/api/notes/save", json={"text": "Private note"}, headers=auth_headers)
-    note_id = (await save_response.json())["data"]["note"]["id"]
-
-    await login(client, "second", "second", auth_headers)
-
-    list_response = await client.post("/api/notes/list", json={})
-    listed_notes = (await list_response.json())["data"]["notes"]
-    assert listed_notes == []
-
-    delete_response = await client.post("/api/notes/delete", json={"id": note_id}, headers=auth_headers)
-    assert delete_response.status == 404
+async def send(client, headers, text="hello", request_id=None):
+    return await client.post("/api/chat/send", headers=headers, json={"text": text, "request_id": request_id or str(uuid4())})
 
 
-@pytest.mark.asyncio
-async def test_cross_user_note_update_does_not_modify_original_note(client, create_user, auth_headers) -> None:
-    await create_user("user", "user")
-    await create_user("second", "second")
+async def finish(app):
+    await asyncio.gather(*list(app["generations"].values()))
 
-    await login(client, "user", "user", auth_headers)
-    save_response = await client.post("/api/notes/save", json={"text": "Owner note"}, headers=auth_headers)
-    note = (await save_response.json())["data"]["note"]
 
-    await login(client, "second", "second", auth_headers)
-    update_response = await client.post("/api/notes/save", json={"id": note["id"], "text": "Stolen update"}, headers=auth_headers)
-    assert update_response.status == 500
+async def test_independent_prompts_and_history(client, identity, app, provider):
+    user, headers = await identity()
+    for prompt in ["hello", "second"]:
+        assert (await send(client, headers, prompt)).status == 202
+        await finish(app)
+    assert len(provider.requests) == 2
+    assert provider.requests[-1]["messages"] == [{"role": "user", "content": "second"}]
+    assert provider.requests[-1]["model"] == "google/gemma-4-31b-it"
+    assert provider.requests[-1]["reasoning"] == {"enabled": False}
+    rows = (await app["store"].history(user["id"]))["messages"]
+    assert len(rows) == 2 and all(r["status"] == "complete" for r in rows)
+    assert (await app["store"].quota(user["id"]))["remaining"] == 58
 
-    await login(client, "user", "user", auth_headers)
-    list_response = await client.post("/api/notes/list", json={})
-    listed_notes = (await list_response.json())["data"]["notes"]
-    assert listed_notes[0]["text"] == "Owner note"
+
+@pytest.mark.parametrize("text", ["", " ", "x" * 1001, "🦊" * 1001, None, 42])
+async def test_invalid_input(client, identity, text):
+    _, headers = await identity()
+    assert (await send(client, headers, text)).status == 400
+
+
+async def test_unicode_boundaries_and_truncation(client, identity, app):
+    user, headers = await identity()
+    assert (await send(client, headers, "🦊" * 1000)).status == 202
+    await finish(app)
+    assert (await send(client, headers, "long")).status == 202
+    await finish(app)
+    last = (await app["store"].history(user["id"]))["messages"][-1]
+    assert last["answer"] == "🦊" * 1000 and last["truncated"] == 1
+
+
+async def test_errors_refund_only_empty_answers(client, identity, app):
+    user, headers = await identity()
+    for text, remaining in [("fail", 60), ("partial", 59)]:
+        await send(client, headers, text)
+        await finish(app)
+        assert (await app["store"].quota(user["id"]))["remaining"] == remaining
+        assert (await app["store"].history(user["id"]))["messages"][-1]["status"] == "error"
+
+
+async def test_idempotency_and_concurrency(client, identity, app, provider):
+    user, headers = await identity()
+    request_id = str(uuid4())
+    responses = await asyncio.gather(send(client, headers, "slow", request_id), send(client, headers, "slow", request_id), send(client, headers, "different"))
+    assert sorted(r.status for r in responses) == [200, 202, 409]
+    assert (await send(client, headers, "changed", request_id)).status == 409
+    await finish(app)
+    assert (await send(client, headers, "slow", request_id)).status == 200
+    assert len(provider.requests) == 1
+
+
+async def test_rolling_quota_and_exact_boundary(client, identity, app, monkeypatch):
+    user, _ = await identity()
+    at = now()
+    monkeypatch.setattr("backend.db.store.now", lambda: at)
+    store = app["store"]
+    for i in range(60):
+        row, _ = await store.reserve(user["id"], str(uuid4()), "hello")
+        await store.update(row["id"], "ok", "complete")
+    with pytest.raises(AppError) as error:
+        await store.reserve(user["id"], str(uuid4()), "hello")
+    assert error.value.status == 429
+    monkeypatch.setattr("backend.db.store.now", lambda: at + timedelta(hours=1))
+    assert (await store.quota(user["id"]))["remaining"] == 60
+    assert (await store.history(user["id"]))["before"] is not None
+    first = await store.history(user["id"])
+    older = await store.history(user["id"], first["before"])
+    assert len(first["messages"]) + len(older["messages"]) == 60
+
+
+async def test_access_review_and_clear(client, identity, app):
+    student, sh = await identity()
+    other, oh = await identity("other@example.org")
+    teacher, th = await identity("teacher@example.org", ["teacher"])
+    admin, ah = await identity("admin@example.org", ["admin"])
+    await send(client, sh, "slow")
+    await asyncio.sleep(0.15)
+    assert (await client.post("/api/chat/history", json={"user_id": student["id"]}, headers=oh)).status == 403
+    assert (await client.post("/api/chat/history", json={"user_id": student["id"]}, headers=th)).status == 200
+    assert (await client.post("/api/review/users", json={}, headers=sh)).status == 403
+    assert (await client.post("/api/admin/clear", json={"confirm": "CLEAR ALL HISTORY"}, headers=th)).status == 403
+    assert (await client.post("/api/admin/clear", json={}, headers=ah)).status == 400
+    assert (await client.post("/api/admin/clear", json={"confirm": "CLEAR ALL HISTORY"}, headers=ah)).status == 200
+    await asyncio.sleep(0.1)
+    assert not app["generations"]
+    assert (await app["store"].history(student["id"]))["messages"] == []
+    assert (await app["store"].quota(student["id"]))["remaining"] == 60
+    assert (await client.post("/api/auth/me", json={}, headers=sh)).status == 200
+
+
+async def test_recovery_preserves_partial_and_refunds_empty(client, identity, app):
+    user, _ = await identity()
+    store = app["store"]
+    row, _ = await store.reserve(user["id"], str(uuid4()), "hello")
+    await store.recover()
+    assert (await store.quota(user["id"]))["remaining"] == 60
+    row, _ = await store.reserve(user["id"], str(uuid4()), "hello")
+    await store.update(row["id"], "partial", "streaming")
+    await store.recover()
+    assert (await store.quota(user["id"]))["remaining"] == 59
+    assert (await store.history(user["id"]))["messages"][-1]["status"] == "interrupted"

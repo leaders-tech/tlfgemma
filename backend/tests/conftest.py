@@ -1,26 +1,23 @@
-"""Provide shared backend test fixtures for the aiohttp test app and test database.
+"""Build isolated test apps and sessions. Edit for shared fixtures; copy fixtures for related tests."""
 
-Edit this file when many backend tests need the same fixture or helper.
-Copy fixture patterns here when you add another shared backend test helper.
-"""
-
-from __future__ import annotations
-
-from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
-
+import secrets
 import pytest
-from aiohttp.test_utils import TestClient
-from yarl import URL
-
-from backend.auth.passwords import hash_password
 from backend.config import Settings
-from backend.db.users import create_user_if_missing
 from backend.main import create_app
+from backend.tests.fake_services import FakeServices
 
 
 @pytest.fixture
-def test_settings(tmp_path: Path) -> Settings:
+async def provider(aiohttp_server):
+    provider = FakeServices()
+    server = await aiohttp_server(provider.app)
+    provider.issuer = str(server.make_url("")).rstrip("/")
+    return provider
+
+
+@pytest.fixture
+def test_settings(tmp_path: Path):
     return Settings(
         mode="test",
         host="127.0.0.1",
@@ -28,47 +25,30 @@ def test_settings(tmp_path: Path) -> Settings:
         db_path=tmp_path / "test.sqlite3",
         cookie_secret="test-secret",
         frontend_origin="http://127.0.0.1:5101",
+        client_id="tlfgemma",
+        client_secret="test",
+        openrouter_api_key="test",
     )
 
 
 @pytest.fixture
-async def app(test_settings: Settings):
+async def app(test_settings, provider):
+    test_settings.oidc_issuer = provider.issuer
+    test_settings.openrouter_url = provider.issuer + "/completion"
     return create_app(test_settings)
 
 
 @pytest.fixture
-async def client(aiohttp_client, app) -> TestClient:
+async def client(aiohttp_client, app):
     return await aiohttp_client(app)
 
 
 @pytest.fixture
-async def db(app):
-    return app["db"]
+async def identity(client, app):
+    async def create(email="student@example.org", roles=None):
+        user = await app["store"].identity(email, email, roles or [])
+        token = secrets.token_urlsafe(32)
+        await app["store"].create_session(token, user["id"])
+        return user, {"Cookie": f"tlf_gemma_session={token}"}
 
-
-@pytest.fixture
-def auth_headers() -> dict[str, str]:
-    return {"Origin": "http://127.0.0.1:5101"}
-
-
-@pytest.fixture
-def create_user(db) -> Callable[[str, str, bool], Awaitable[None]]:
-    async def _create_user(username: str, password: str, is_admin: bool = False) -> None:
-        await create_user_if_missing(db, username, hash_password(password), is_admin)
-
-    return _create_user
-
-
-@pytest.fixture
-def extract_cookie() -> Callable[[TestClient, str, str], str]:
-    def _extract_cookie(client: TestClient, name: str, path: str = "/api/auth/refresh") -> str:
-        cookie = client.session.cookie_jar.filter_cookies(URL(f"http://127.0.0.1:8081{path}")).get(name)
-        assert cookie is not None
-        return cookie.value
-
-    return _extract_cookie
-
-
-async def login(client: TestClient, username: str, password: str, headers: dict[str, str]) -> None:
-    response = await client.post("/api/auth/login", json={"username": username, "password": password}, headers=headers)
-    assert response.status == 200
+    return create

@@ -1,50 +1,45 @@
-/*
-This file tests the shared auth provider and its startup session-loading behavior.
-Edit this file when auth bootstrap, login state loading, or shared auth context behavior changes.
-Copy this file when you add tests for another shared frontend provider.
-*/
-
-import "@testing-library/jest-dom/vitest";
-import { render, screen, waitFor } from "@testing-library/react";
-import { StrictMode } from "react";
-import { describe, expect, it, vi } from "vitest";
-
-const { postJson } = vi.hoisted(() => ({
-  postJson: vi.fn(),
-}));
-
-vi.mock("../shared/api", async () => {
-  const actual = await vi.importActual<typeof import("../shared/api")>("../shared/api");
-  return {
-    ...actual,
-    postJson,
-  };
-});
-
+// Test session startup and failures. Edit for auth state changes; copy for other providers.
+import { render, screen } from "@testing-library/react";
+import { vi, it, expect, beforeEach } from "vitest";
 import { AuthProvider, useAuth } from "./auth";
-
-function AuthStatus() {
-  const { loading, user } = useAuth();
-  if (loading) {
-    return <p>Loading</p>;
-  }
-  return <p>{user ? user.username : "Anonymous"}</p>;
+import { ApiError, postJson } from "../shared/api";
+vi.mock("../shared/api", async (importOriginal) => ({ ...(await importOriginal<typeof import("../shared/api")>()), postJson: vi.fn() }));
+vi.mock("../shared/socket", () => ({ createUserSocket: () => ({ stop: vi.fn() }) }));
+function View() {
+  const auth = useAuth();
+  return (
+    <div>
+      {auth.loading ? "Loading" : auth.user?.email || "Anonymous"}
+      {auth.error}
+    </div>
+  );
 }
-
-describe("AuthProvider", () => {
-  it("loads the session only once during StrictMode startup", async () => {
-    postJson.mockResolvedValueOnce({ user: null });
-
-    render(
-      <StrictMode>
-        <AuthProvider>
-          <AuthStatus />
-        </AuthProvider>
-      </StrictMode>,
-    );
-
-    await waitFor(() => expect(screen.getByText("Anonymous")).toBeInTheDocument());
-    expect(postJson).toHaveBeenCalledTimes(1);
-    expect(postJson).toHaveBeenCalledWith("/auth/me");
-  });
+beforeEach(() => vi.clearAllMocks());
+it("loads the session", async () => {
+  vi.mocked(postJson).mockResolvedValue({ user: { id: 1, email: "student@example.org", roles: [] } });
+  render(
+    <AuthProvider>
+      <View />
+    </AuthProvider>,
+  );
+  expect(await screen.findByText("student@example.org")).toBeVisible();
+});
+it("treats expired sessions as anonymous", async () => {
+  vi.mocked(postJson).mockRejectedValue(new ApiError(401, "not_authenticated", "Login required"));
+  render(
+    <AuthProvider>
+      <View />
+    </AuthProvider>,
+  );
+  expect(await screen.findByText("Anonymous")).toBeVisible();
+  expect(postJson).toHaveBeenCalledTimes(1);
+});
+it("shows server errors instead of an unhandled rejection", async () => {
+  vi.mocked(postJson).mockRejectedValue(new Error("Server unavailable"));
+  render(
+    <AuthProvider>
+      <View />
+    </AuthProvider>,
+  );
+  expect(await screen.findByText(/Server unavailable/)).toBeVisible();
 });

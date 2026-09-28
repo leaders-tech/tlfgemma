@@ -53,7 +53,7 @@ def main() -> int:
     load_dotenv(ROOT_DIR / ".env")
     load_dotenv(ROOT_DIR / ".agent.env")
 
-    source_raw = os.getenv("DB_PATH", "./dev.sqlite3")
+    source_raw = os.getenv("DB_PATH", "./tlfgemma.sqlite3")
     target_raw = os.getenv("AGENT_DB_PATH", ".agent/agent.sqlite3")
 
     source_path = resolve_path(source_raw)

@@ -26,8 +26,7 @@ export default defineConfig(function (_a) {
     var proxyTarget = (_b = env.VITE_DEV_PROXY_TARGET) === null || _b === void 0 ? void 0 : _b.trim();
     var baseLogger = createLogger();
     var logger = __assign(__assign({}, baseLogger), { error: function (message, options) {
-            var isKnownWsDisconnect = (message.includes("ws proxy error:") || message.includes("ws proxy socket error:")) &&
-                (message.includes("EPIPE") || message.includes("ECONNRESET"));
+            var isKnownWsDisconnect = (message.includes("ws proxy error:") || message.includes("ws proxy socket error:")) && (message.includes("EPIPE") || message.includes("ECONNRESET"));
             if (isKnownWsDisconnect) {
                 return;
             }
@@ -40,12 +39,13 @@ export default defineConfig(function (_a) {
             tailwindcss(),
             VitePWA({
                 registerType: "autoUpdate",
+                workbox: { navigateFallbackDenylist: [/^\/api(?:\/|$)/, /^\/ws(?:\/|$)/] },
                 manifest: {
-                    name: "Template PWA",
-                    short_name: "TemplatePWA",
-                    description: "Small starter app for school projects.",
-                    theme_color: "#0e1a2b",
-                    background_color: "#eff6ff",
+                    name: "TLF-Gemma",
+                    short_name: "TLF-Gemma",
+                    description: "A focused workspace for ML competitions.",
+                    theme_color: "#023048",
+                    background_color: "#F9FAFB",
                     display: "standalone",
                     start_url: "/",
                     icons: [

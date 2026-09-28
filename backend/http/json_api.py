@@ -30,7 +30,10 @@ def fail(status: int, code: str, message: str) -> web.Response:
 async def read_json(request: web.Request) -> dict[str, Any]:
     if request.content_type != "application/json":
         raise AppError(400, "bad_request", "Expected application/json.")
-    data = await request.json()
+    try:
+        data = await request.json()
+    except ValueError, UnicodeDecodeError:
+        raise AppError(400, "bad_request", "Expected valid JSON.") from None
     if not isinstance(data, dict):
         raise AppError(400, "bad_request", "Expected a JSON object.")
     return data

@@ -40,7 +40,7 @@ export GATEWAY_PORT="${E2E_GATEWAY_PORT}"
 export PW_DOCKER_FRONTEND_URL="${E2E_FRONTEND_URL}"
 
 cleanup() {
-  "${COMPOSE_SCRIPT}" --env-file "${DOCKER_ENV_FILE}" -p "${PROJECT_NAME}" -f "${REPO_DIR}/docker-compose.yml" -f "${REPO_DIR}/docker-compose.local.yml" down -v --remove-orphans >/dev/null 2>&1 || true
+  "${COMPOSE_SCRIPT}" --env-file "${DOCKER_ENV_FILE}" -p "${PROJECT_NAME}" -f "${REPO_DIR}/docker-compose.yml" -f "${REPO_DIR}/docker-compose.local.yml" -f "${REPO_DIR}/docker-compose.test.yml" down -v --remove-orphans >/dev/null 2>&1 || true
 }
 
 wait_for_frontend() {
@@ -60,7 +60,7 @@ wait_for_frontend() {
 trap cleanup EXIT INT TERM
 
 cleanup
-"${COMPOSE_SCRIPT}" --env-file "${DOCKER_ENV_FILE}" -p "${PROJECT_NAME}" -f "${REPO_DIR}/docker-compose.yml" -f "${REPO_DIR}/docker-compose.local.yml" up -d --build --remove-orphans
+"${COMPOSE_SCRIPT}" --env-file "${DOCKER_ENV_FILE}" -p "${PROJECT_NAME}" -f "${REPO_DIR}/docker-compose.yml" -f "${REPO_DIR}/docker-compose.local.yml" -f "${REPO_DIR}/docker-compose.test.yml" up -d --build --remove-orphans
 wait_for_frontend
 
 cd "${FRONTEND_DIR}"

@@ -7,7 +7,6 @@ Copy this file only when you add another small local dev helper process.
 from __future__ import annotations
 
 import os
-import signal
 import subprocess
 import sys
 import time

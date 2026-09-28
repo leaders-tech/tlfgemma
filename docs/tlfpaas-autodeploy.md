@@ -8,7 +8,7 @@ by this template.
 
 ## Current Deployment Shape
 
-`templatePWA` is a same-origin app with two public services:
+`TLF-Gemma` is a same-origin app with two public services:
 
 - `frontend` serves the built React app through nginx on port `8080`;
 - `backend` serves JSON APIs and WebSocket on port `8081`;
@@ -109,7 +109,7 @@ Current important values:
 
 ```env
 APP_MODE=dev
-DB_PATH=/data/app.sqlite3
+DB_PATH=/data/tlfgemma.sqlite3
 FRONTEND_ORIGIN=http://localhost:5105
 VITE_BACKEND_URL=/api
 ```
@@ -197,7 +197,7 @@ These values are part of the deployment contract:
 - frontend API base path: `VITE_BACKEND_URL=/api`;
 - backend API route prefix: `/api/...`;
 - backend WebSocket path: `/ws`;
-- backend data path: `/data/app.sqlite3`;
+- backend data path: `/data/tlfgemma.sqlite3`;
 - named volume: `sqlite_data:/data`;
 - route labels: `tlfpaas.route: "frontend"` and `tlfpaas.route: "backend"`;
 - final Dockerfile users: `USER nginx` and `USER app`.
@@ -224,3 +224,11 @@ Useful checks:
 docker compose --env-file .docker.env -f docker-compose.yml config --quiet
 docker compose --env-file .docker.env -f docker-compose.yml -f docker-compose.local.yml config --quiet
 ```
+
+## TLF-Gemma identity
+
+Production origin: `https://tlfgemma.tlfedu.tech`. Register
+`https://tlfgemma.tlfedu.tech/api/auth/oidc/callback` in TLF Auth.
+Set `OIDC_ISSUER=https://auth.leaders.tech`, `X_CLIENT_ID=tlfgemma`,
+`X_SECRET` and `OPENROUTER_API_KEY` on the backend. Never use plain
+`CLIENT_ID` or `SECRET` deployment keys. Run one backend replica.

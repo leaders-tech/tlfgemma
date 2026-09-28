@@ -1,5 +1,5 @@
 {
-  "name": "templatepwa-frontend",
+  "name": "tlfgemma-frontend",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -15,14 +15,19 @@
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.13",
+    "katex": "^0.18.9",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "react-markdown": "^10.1.0",
     "react-router-dom": "^7.8.2",
+    "rehype-katex": "^7.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
     "tailwindcss": "^4.1.13"
   },
   "devDependencies": {
     "@eslint/js": "^9.34.0",
-    "@playwright/test": "^1.55.0",
+    "@playwright/test": "^1.63.0",
     "@testing-library/jest-dom": "^6.8.0",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",

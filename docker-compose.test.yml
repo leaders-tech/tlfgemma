@@ -1,0 +1,5 @@
+# Run isolated fake identity/model services for Docker browser tests.
+# Edit for Docker test setup; copy for another test-only service override.
+services:
+  backend:
+    command: ["python", "-m", "backend.tests.e2e_server"]

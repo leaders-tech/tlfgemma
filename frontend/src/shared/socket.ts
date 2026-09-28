@@ -12,6 +12,7 @@ export type SocketStatus = "idle" | "connecting" | "connected" | "disconnected";
 type CreateSocketOptions = {
   onMessage: (message: WsMessage) => void;
   onStatus: (status: SocketStatus) => void;
+  onSessionEnded?: () => void;
 };
 
 export function createUserSocket(options: CreateSocketOptions) {
@@ -27,9 +28,15 @@ export function createUserSocket(options: CreateSocketOptions) {
       reconnectDelayMs = 1500;
       options.onStatus("connected");
     };
-    ws.onmessage = (event) => options.onMessage(JSON.parse(event.data) as WsMessage);
+    ws.onmessage = (event) => {
+      if (!stopped) options.onMessage(JSON.parse(event.data) as WsMessage);
+    };
     ws.onerror = () => console.warn("WebSocket error.");
-    ws.onclose = () => {
+    ws.onclose = (event) => {
+      if (event?.code === 1008) {
+        stopped = true;
+        options.onSessionEnded?.();
+      }
       options.onStatus("disconnected");
       if (!stopped) {
         reconnectTimer = window.setTimeout(connect, reconnectDelayMs);
@@ -49,7 +56,13 @@ export function createUserSocket(options: CreateSocketOptions) {
       if (reconnectTimer !== null) {
         window.clearTimeout(reconnectTimer);
       }
-      ws?.close();
+      if (ws) {
+        ws.onopen = null;
+        ws.onmessage = null;
+        ws.onerror = null;
+        ws.onclose = null;
+        ws.close();
+      }
     },
   };
 }

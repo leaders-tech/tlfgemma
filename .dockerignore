@@ -20,3 +20,8 @@ node_modules
 dist
 playwright-report
 test-results
+
+# Local secrets and private agent runtime must never enter a build context.
+.docker.env
+.agent.env
+.agent

@@ -1,21 +1,11 @@
-"""Load backend settings from .env and keep them in one Settings object.
+"""Load server configuration. Edit for environment settings; do not copy this module."""
 
-Edit this file when env variables, ports, cookie names, or dev/prod defaults change.
-Do not copy this file. Change it when the app configuration model changes.
-"""
-
-from __future__ import annotations
-
-import os
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlsplit, urlunsplit
-
+import os
 from dotenv import load_dotenv
 
-
 ROOT_DIR = Path(__file__).resolve().parent.parent
-DEFAULT_COOKIE_SECRET = "change-this-secret"
 
 
 @dataclass(slots=True)
@@ -27,69 +17,67 @@ class Settings:
     cookie_secret: str
     frontend_origin: str
     debug_logs: bool = True
-    access_cookie_name: str = "template_access"
-    refresh_cookie_name: str = "template_refresh"
-    access_ttl_seconds: int = 2 * 60 * 60
-    refresh_ttl_seconds: int = 60 * 24 * 60 * 60
+    oidc_issuer: str = "http://localhost:8000"
+    client_id: str = ""
+    client_secret: str = ""
+    openrouter_api_key: str = ""
+    openrouter_url: str = "https://openrouter.ai/api/v1/chat/completions"
+    session_cookie_name: str = "tlf_gemma_session"
 
     @property
-    def secure_cookies(self) -> bool:
+    def secure_cookies(self):
         return self.mode == "prod"
 
     @property
-    def allowed_origins(self) -> set[str]:
-        origins = {self.frontend_origin.rstrip("/")}
-        if self.mode != "prod":
-            origins.add(f"http://{self.host}:{self.port}")
-            parsed = urlsplit(self.frontend_origin)
-            if parsed.hostname == "127.0.0.1":
-                origins.add(urlunsplit((parsed.scheme, f"localhost:{parsed.port}", parsed.path, parsed.query, parsed.fragment)).rstrip("/"))
-            if parsed.hostname == "localhost":
-                origins.add(urlunsplit((parsed.scheme, f"127.0.0.1:{parsed.port}", parsed.path, parsed.query, parsed.fragment)).rstrip("/"))
-        return origins
+    def allowed_origins(self):
+        return {self.frontend_origin}
 
     @property
-    def migrations_path(self) -> Path:
-        return ROOT_DIR / "backend" / "migrations"
+    def callback_url(self):
+        return self.frontend_origin + "/api/auth/oidc/callback"
+
+    @property
+    def migrations_path(self):
+        return ROOT_DIR / "backend/db/schema"
 
 
-def load_settings() -> Settings:
+def parse_bool_env(value, *, default):
+    if value is None or value.strip() == "":
+        return default
+    if value.lower() in {"1", "true", "yes", "on"}:
+        return True
+    if value.lower() in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError("Expected a boolean environment value.")
+
+
+def validate_settings(settings):
+    if settings.mode == "prod":
+        if not settings.frontend_origin.startswith("https://") or not settings.oidc_issuer.startswith("https://"):
+            raise ValueError("Production app and issuer URLs must use HTTPS.")
+        if not settings.client_id or not settings.client_secret or not settings.openrouter_api_key:
+            raise ValueError("Set X_CLIENT_ID, X_SECRET and OPENROUTER_API_KEY.")
+        if settings.openrouter_url != "https://openrouter.ai/api/v1/chat/completions":
+            raise ValueError("Production must use OpenRouter.")
+
+
+def load_settings():
     load_dotenv(ROOT_DIR / ".env")
-    mode = os.getenv("APP_MODE", "dev").strip().lower()
-    host = os.getenv("APP_HOST", "localhost").strip()
-    port = int(os.getenv("APP_PORT", "3101"))
-    db_path = Path(os.getenv("DB_PATH", "./dev.sqlite3")).expanduser()
-    if not db_path.is_absolute():
-        db_path = ROOT_DIR / db_path
-    cookie_secret = os.getenv("COOKIE_SECRET", DEFAULT_COOKIE_SECRET)
-    frontend_public_host = os.getenv("FRONTEND_PUBLIC_HOST", "localhost").strip()
-    frontend_port = os.getenv("FRONTEND_PORT", "5101").strip()
-    frontend_origin = os.getenv("FRONTEND_ORIGIN", f"http://{frontend_public_host}:{frontend_port}").rstrip("/")
-    debug_logs = parse_bool_env(os.getenv("APP_DEBUG_LOGS"), default=mode != "prod")
+    mode = os.getenv("APP_MODE", "dev")
     settings = Settings(
         mode=mode,
-        host=host,
-        port=port,
-        db_path=db_path,
-        cookie_secret=cookie_secret,
-        frontend_origin=frontend_origin,
-        debug_logs=debug_logs,
+        host=os.getenv("APP_HOST", "localhost"),
+        port=int(os.getenv("APP_PORT", "3101")),
+        db_path=ROOT_DIR / os.getenv("DB_PATH", "tlfgemma.sqlite3"),
+        cookie_secret=os.getenv("COOKIE_SECRET", ""),
+        frontend_origin=os.getenv(
+            "FRONTEND_ORIGIN", "http://" + os.getenv("FRONTEND_PUBLIC_HOST", "localhost") + ":" + os.getenv("FRONTEND_PORT", "5101")
+        ).rstrip("/"),
+        debug_logs=parse_bool_env(os.getenv("APP_DEBUG_LOGS"), default=mode != "prod"),
+        oidc_issuer=os.getenv("OIDC_ISSUER", "http://localhost:8000").rstrip("/"),
+        client_id=os.getenv("X_CLIENT_ID", ""),
+        client_secret=os.getenv("X_SECRET", ""),
+        openrouter_api_key=os.getenv("OPENROUTER_API_KEY", ""),
     )
     validate_settings(settings)
     return settings
-
-
-def parse_bool_env(value: str | None, *, default: bool) -> bool:
-    if value is None or value.strip() == "":
-        return default
-    normalized = value.strip().lower()
-    if normalized in {"1", "true", "yes", "on"}:
-        return True
-    if normalized in {"0", "false", "no", "off"}:
-        return False
-    raise ValueError(f"Expected a boolean env value, got {value!r}. Use 1 or 0.")
-
-
-def validate_settings(settings: Settings) -> None:
-    if settings.mode == "prod" and settings.cookie_secret == DEFAULT_COOKIE_SECRET:
-        raise ValueError("Refusing to start in prod with the default COOKIE_SECRET. Set a real secret in .env or your deploy env.")

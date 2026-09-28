@@ -34,12 +34,13 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       VitePWA({
         registerType: "autoUpdate",
+        workbox: { navigateFallbackDenylist: [/^\/api(?:\/|$)/, /^\/ws(?:\/|$)/] },
         manifest: {
-          name: "Template PWA",
-          short_name: "TemplatePWA",
-          description: "Small starter app for school projects.",
-          theme_color: "#0e1a2b",
-          background_color: "#eff6ff",
+          name: "TLF-Gemma",
+          short_name: "TLF-Gemma",
+          description: "A focused workspace for ML competitions.",
+          theme_color: "#023048",
+          background_color: "#F9FAFB",
           display: "standalone",
           start_url: "/",
           icons: [
