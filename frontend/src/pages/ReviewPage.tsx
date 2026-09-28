@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../app/auth";
 import { postJson } from "../shared/api";
 import type { History, Message, User, WsMessage } from "../shared/types";
+import { ModelSettingsPanel } from "../features/chat/ModelSettingsPanel";
 import { HistoryList, mergeMessages } from "../features/chat/History";
 export function ReviewPage() {
   const { user } = useAuth();
@@ -113,6 +114,7 @@ export function ReviewPage() {
           </button>
         </section>
       )}
+      {user?.roles.includes("admin") && <ModelSettingsPanel />}
       <div className="review-grid">
         <aside>
           <label htmlFor="search">Find a user</label>

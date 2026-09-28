@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../app/auth";
 import { ApiError, postJson } from "../shared/api";
 import type { History, Message, Quota, WsMessage } from "../shared/types";
+import { ModelBadge } from "../features/chat/ModelBadge";
 import { HistoryList, mergeMessages } from "../features/chat/History";
 export function ChatPage() {
   const { status } = useAuth();
@@ -100,10 +101,7 @@ export function ChatPage() {
           <div className="eyebrow">YOUR WORKSPACE</div>
           <h1>My chat</h1>
         </div>
-        <div className="model-badge">
-          <span className="gemma-dot" />
-          Gemma 4 · 31B
-        </div>
+        <ModelBadge />
       </div>
       <div className="limits">
         <span>

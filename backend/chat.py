@@ -4,8 +4,6 @@ import asyncio
 import json
 from aiohttp import ClientTimeout
 
-MODEL = "google/gemma-4-31b-it"
-
 
 async def generate(app, exchange):
     store, settings = app["store"], app["settings"]
@@ -22,7 +20,7 @@ async def generate(app, exchange):
             settings.openrouter_url,
             headers={"Authorization": "Bearer " + settings.openrouter_api_key},
             json={
-                "model": MODEL,
+                "model": exchange["model"],
                 "messages": [{"role": "user", "content": exchange["prompt"]}],
                 "stream": True,
                 "max_tokens": 1000,

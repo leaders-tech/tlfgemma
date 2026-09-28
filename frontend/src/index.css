@@ -676,3 +676,47 @@ h3 {
   height: 36px;
   margin-right: 12px;
 }
+/* Shared model controls and per-answer audit labels. */
+.model-settings {
+  border: 1px solid #d6e1e8;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 24px;
+  margin-bottom: 28px;
+}
+.model-settings h2 {
+  margin: 0 0 10px;
+}
+.model-settings p {
+  font-size: 13px;
+  color: #374151;
+  line-height: 1.6;
+}
+.model-settings form {
+  max-width: 650px;
+  margin-top: 16px;
+}
+.model-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  font-size: 12px;
+}
+.model-default,
+.answer-model {
+  overflow-wrap: anywhere;
+}
+.answer-model {
+  color: #374151;
+  font-size: 11px;
+  margin-bottom: 10px;
+}
+.model-badge {
+  max-width: 65%;
+  overflow-wrap: anywhere;
+}
+.model-badge .gemma-dot {
+  flex-shrink: 0;
+}

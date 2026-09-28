@@ -74,3 +74,26 @@ test("admin clears active answers for everyone", async ({ page, browser }) => {
 });
 // Global reset changes all histories, so these scenarios intentionally run serially.
 test.describe.configure({ mode: "serial" });
+
+test("admin changes the shared model while students see the update", async ({ page, browser }) => {
+  const student = await browser.newPage();
+  await login(student, "model-student@example.org");
+  await expect(student.getByLabel("Current model")).toContainText("google/gemma-4-26b-a4b-it");
+  await login(page, "admin@example.org");
+  await page.getByRole("link", { name: "Review chats" }).click();
+  await expect(page.getByLabel("OpenRouter model")).toHaveValue("google/gemma-4-26b-a4b-it");
+  await page.getByLabel("OpenRouter model").fill("google/gemma-4-31b-it");
+  await page.getByRole("button", { name: "Save model" }).click();
+  await expect(page.getByRole("status")).toHaveText("Model saved.");
+  await expect(student.getByLabel("Current model")).toContainText("google/gemma-4-31b-it");
+  await page.reload();
+  await expect(page.getByLabel("OpenRouter model")).toHaveValue("google/gemma-4-31b-it");
+  await student.getByLabel("Your message").fill("model check");
+  await student.getByRole("button", { name: /Send message/ }).click();
+  await expect(student.locator("article .answer-model")).toHaveText("google/gemma-4-31b-it");
+  await expect(student.locator(".katex")).toBeVisible();
+  await page.getByRole("button", { name: "Use default" }).click();
+  await expect(student.getByLabel("Current model")).toContainText("google/gemma-4-26b-a4b-it");
+  await expect(student.locator("article .answer-model")).toHaveText("google/gemma-4-31b-it");
+  await student.close();
+});

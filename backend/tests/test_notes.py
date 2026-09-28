@@ -23,7 +23,7 @@ async def test_independent_prompts_and_history(client, identity, app, provider):
         await finish(app)
     assert len(provider.requests) == 2
     assert provider.requests[-1]["messages"] == [{"role": "user", "content": "second"}]
-    assert provider.requests[-1]["model"] == "google/gemma-4-31b-it"
+    assert provider.requests[-1]["model"] == "google/gemma-4-26b-a4b-it"
     assert provider.requests[-1]["reasoning"] == {"enabled": False}
     rows = (await app["store"].history(user["id"]))["messages"]
     assert len(rows) == 2 and all(r["status"] == "complete" for r in rows)

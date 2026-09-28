@@ -56,7 +56,8 @@ For local Docker, copy `.docker.env.example` to `.docker.env`, set `APP_MODE=dev
 
 ## Competition rules
 
-- Exactly `google/gemma-4-31b-it`; one current user message, no history or hidden system message, no tools, reasoning disabled.
+- The hardcoded default is `google/gemma-4-26b-a4b-it`. Admins can change the shared OpenRouter model in **Review chats → Model settings**, or select **Use default**. The selection survives restarts and history resets. It applies to new requests; active and repeated requests keep their original model, which is recorded in history.
+- One current user message, no history or hidden system message, no tools, reasoning always disabled.
 - Input and visible output: at most 1,000 Unicode code points. An emoji can contain several code points. Input overflow stays editable but cannot be sent. The server caps output before saving or streaming it.
 - 60 accepted requests in a rolling 60 minutes, including teacher/admin test chats. One active generation per user. Failed/interrupted requests with no answer refund their slot; partial answers still count.
 - The server reserves quota atomically. A UUID request ID prevents duplicate model calls after a network retry. Browser disconnects do not cancel answers. A restart marks unfinished answers interrupted and preserves saved partial text.
@@ -74,11 +75,13 @@ All browser JSON calls are POST and return `{ok: true, data: ...}` or `{ok: fals
 | `/api/auth/me`, `/api/auth/logout` | Read or revoke the current session. |
 | `/api/chat/send` | Accept `{text, request_id}` and return the exchange plus quota. |
 | `/api/chat/history` | Read `{user_id?, before?}`; cross-user reads require teacher/admin. |
+| `/api/chat/model` | Read the current and default models (signed-in users). |
+| `/api/admin/model` | Save `{model}` for new requests (admin only). |
 | `/api/chat/quota` | Return remaining count, server time and next slot time. |
 | `/api/review/users` | Search `{search?, after?}`; teacher/admin only. |
 | `/api/admin/clear` | Admin-only reset with `{confirm: "CLEAR ALL HISTORY"}`. |
 
-`/ws` authenticates with the session cookie and validates Origin. `chat.updated` contains the full saved exchange, monotonically increasing version and quota; `history.cleared` invalidates history. Reconnect reloads the latest persisted messages. No OIDC tokens or model API key reach the browser.
+`/ws` authenticates with the session cookie and validates Origin. `chat.updated` contains the full saved exchange, monotonically increasing version and quota; `history.cleared` invalidates history. `model.changed` updates the shared model label. Reconnect reloads the latest persisted messages. No OIDC tokens or model API key reach the browser.
 
 ## Checks
 

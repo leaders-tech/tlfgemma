@@ -24,6 +24,7 @@ export function HistoryList({ messages }: { messages: Message[] }) {
           </div>
           <div className="prompt">{item.prompt}</div>
           <div className="answer">
+            {item.model && <div className="answer-model">{item.model}</div>}
             <div className="message-label">
               <span className="gemma-dot" />
               GEMMA{" "}

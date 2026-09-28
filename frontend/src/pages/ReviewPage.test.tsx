@@ -25,7 +25,11 @@ function page(roles: string[]) {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(postJson).mockImplementation(async (path) =>
-    path === "/review/users" ? { users: [{ id: 2, email: "student@example.org", roles: [] }], after: null } : { messages: [], before: null },
+    path === "/chat/model"
+      ? { model: "google/gemma-4-26b-a4b-it", default_model: "google/gemma-4-26b-a4b-it" }
+      : path === "/review/users"
+        ? { users: [{ id: 2, email: "student@example.org", roles: [] }], after: null }
+        : { messages: [], before: null },
   );
 });
 it("lets teachers inspect users without reset controls", async () => {
@@ -33,6 +37,7 @@ it("lets teachers inspect users without reset controls", async () => {
   fireEvent.click(await screen.findByRole("button", { name: /student@example.org/ }));
   expect(await screen.findByText("No messages yet.")).toBeVisible();
   expect(screen.queryByText("Clear all history")).toBeNull();
+  expect(screen.queryByLabelText("OpenRouter model")).toBeNull();
 });
 it("requires confirmation before admin deletion", async () => {
   page(["admin"]);

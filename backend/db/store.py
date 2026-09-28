@@ -5,6 +5,7 @@ import hashlib
 import json
 from datetime import UTC, datetime, timedelta
 from backend.http.json_api import AppError
+from backend.db.model_settings import read_model, save_model
 
 
 def now():
@@ -89,6 +90,14 @@ class Store:
         async with self.lock:
             return await self._quota(user_id, now())
 
+    async def model(self):
+        async with self.lock:
+            return await read_model(self.db)
+
+    async def set_model(self, model):
+        async with self.lock:
+            await save_model(self.db, model)
+
     async def reserve(self, user_id, request_id, prompt):
         async with self.lock:
             await self.db.execute("BEGIN IMMEDIATE")
@@ -105,8 +114,8 @@ class Store:
                 if (await self._quota(user_id, at))["remaining"] == 0:
                     raise AppError(429, "rate_limit", "You have used all 60 messages. Please wait.")
                 cursor = await self.db.execute(
-                    "INSERT INTO exchanges(user_id,request_id,prompt,status,created_at,updated_at) VALUES (?,?,?,'streaming',?,?)",
-                    (user_id, request_id, prompt, stamp(at), stamp(at)),
+                    "INSERT INTO exchanges(user_id,request_id,prompt,status,created_at,updated_at,model) VALUES (?,?,?,'streaming',?,?,?)",
+                    (user_id, request_id, prompt, stamp(at), stamp(at), await read_model(self.db)),
                 )
                 row = await self.one("SELECT * FROM exchanges WHERE id=?", (cursor.lastrowid,))
                 await self.db.commit()
