@@ -16,11 +16,11 @@ Set these values in the root `.env`:
 ```dotenv
 X_CLIENT_ID=tlfgemma
 X_SECRET=your-client-secret
-OIDC_ISSUER=https://auth.leaders.tech
+X_OIDC_ISSUER=https://auth.leaders.tech
 OPENROUTER_API_KEY=your-openrouter-key
 ```
 
-The local auth service can also be used with `OIDC_ISSUER=http://localhost:8000`. Use the exact issuer returned by discovery, even when its discovery URL was opened through `127.0.0.1`.
+The local auth service can also be used with `X_OIDC_ISSUER=http://localhost:8000`. Use the exact issuer returned by discovery, even when its discovery URL was opened through `127.0.0.1`.
 
 Register each frontend origin plus `/api/auth/oidc/callback` in the auth service. Normal development defaults to `http://localhost:5101/api/auth/oidc/callback`. The hidden agent runtime uses `http://127.0.0.1:5102/api/auth/oidc/callback`. Use `make aback`, `make afront`, and `make aopen` for that runtime; its settings are in `.agent.env` and its DB is copied from the normal DB before every backend start. `make alogin` opens the browser for OIDC sign-in; there is no password login or dev bypass.
 
@@ -33,12 +33,14 @@ APP_MODE=prod
 APP_DEBUG_LOGS=0
 DB_PATH=/data/tlfgemma.sqlite3
 FRONTEND_ORIGIN=https://tlfgemma.tlfedu.tech
-OIDC_ISSUER=https://auth.leaders.tech
+X_OIDC_ISSUER=https://auth.leaders.tech
 X_CLIENT_ID=tlfgemma
 VITE_BACKEND_URL=/api
 ```
 
 Set `X_SECRET`, `OPENROUTER_API_KEY` and `COOKIE_SECRET` in the Secrets UI and click **Redeploy now**. The client ID and secret use `X_` names because the deployment platform reserves the plain names. Never put real secrets in example files or frontend variables. `COOKIE_SECRET` is retained for template compatibility; sessions use random 48-byte tokens whose SHA-256 hashes are stored in SQLite, not signed browser claims.
+
+Set `FRONTEND_ORIGIN` and `X_OIDC_ISSUER` in deployment settings too. Updating the repository's `.docker.env.example` does not replace values already saved by the deployment platform. A missing or HTTP URL in production stops the backend and can appear as a proxy `502`; correct the named setting and redeploy. Do not switch production to `APP_MODE=dev` to bypass this check.
 
 Registered production callback:
 

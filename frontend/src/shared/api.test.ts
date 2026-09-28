@@ -45,3 +45,28 @@ describe("shared api helper", () => {
     expect(wsUrl.protocol).toBe(window.location.protocol === "https:" ? "wss:" : "ws:");
   });
 });
+
+it.each([502, 503, 504])("explains an empty proxy %i response", async (status) => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status })));
+  const { postJson } = await import("./api");
+  await expect(postJson("/auth/me")).rejects.toMatchObject({
+    status,
+    code: "server_unavailable",
+    message: "The server is unavailable. Please try again shortly.",
+  });
+  vi.unstubAllGlobals();
+});
+
+it("keeps structured provider errors intact", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ ok: false, error: { code: "auth_unavailable", message: "Login service is unavailable." } }), { status: 502 }),
+      ),
+  );
+  const { postJson } = await import("./api");
+  await expect(postJson("/auth/login")).rejects.toMatchObject({ code: "auth_unavailable", message: "Login service is unavailable." });
+  vi.unstubAllGlobals();
+});

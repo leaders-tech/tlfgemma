@@ -30,13 +30,16 @@ const apiBasePath = getApiBasePath();
 
 async function readApiPayload<T>(response: Response): Promise<ApiResponse<T>> {
   const text = await response.text();
+  const unavailable = [502, 503, 504].includes(response.status);
   if (!text) {
+    if (unavailable) throw new ApiError(response.status, "server_unavailable", "The server is unavailable. Please try again shortly.");
     throw new ApiError(response.status, "empty_response", "Server returned an empty response.");
   }
 
   try {
     return JSON.parse(text) as ApiResponse<T>;
   } catch {
+    if (unavailable) throw new ApiError(response.status, "server_unavailable", "The server is unavailable. Please try again shortly.");
     throw new ApiError(response.status, "invalid_json", "Server returned invalid JSON.");
   }
 }

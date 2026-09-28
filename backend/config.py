@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 import os
+from urllib.parse import urlsplit
 from dotenv import load_dotenv
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -53,8 +54,10 @@ def parse_bool_env(value, *, default):
 
 def validate_settings(settings):
     if settings.mode == "prod":
-        if not settings.frontend_origin.startswith("https://") or not settings.oidc_issuer.startswith("https://"):
-            raise ValueError("Production app and issuer URLs must use HTTPS.")
+        for name, value in (("FRONTEND_ORIGIN", settings.frontend_origin), ("X_OIDC_ISSUER", settings.oidc_issuer)):
+            parsed = urlsplit(value)
+            if parsed.scheme != "https" or not parsed.hostname:
+                raise ValueError(f"{name} must be a complete HTTPS URL in production. Set {name} in deployment settings and redeploy.")
         if not settings.client_id or not settings.client_secret or not settings.openrouter_api_key:
             raise ValueError("Set X_CLIENT_ID, X_SECRET and OPENROUTER_API_KEY.")
         if settings.openrouter_url != "https://openrouter.ai/api/v1/chat/completions":
@@ -74,7 +77,7 @@ def load_settings():
             "FRONTEND_ORIGIN", "http://" + os.getenv("FRONTEND_PUBLIC_HOST", "localhost") + ":" + os.getenv("FRONTEND_PORT", "5101")
         ).rstrip("/"),
         debug_logs=parse_bool_env(os.getenv("APP_DEBUG_LOGS"), default=mode != "prod"),
-        oidc_issuer=os.getenv("OIDC_ISSUER", "http://localhost:8000").rstrip("/"),
+        oidc_issuer=os.getenv("X_OIDC_ISSUER", "http://localhost:8000").rstrip("/"),
         client_id=os.getenv("X_CLIENT_ID", ""),
         client_secret=os.getenv("X_SECRET", ""),
         openrouter_api_key=os.getenv("OPENROUTER_API_KEY", ""),

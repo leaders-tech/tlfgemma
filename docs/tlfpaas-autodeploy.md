@@ -229,6 +229,6 @@ docker compose --env-file .docker.env -f docker-compose.yml -f docker-compose.lo
 
 Production origin: `https://tlfgemma.tlfedu.tech`. Register
 `https://tlfgemma.tlfedu.tech/api/auth/oidc/callback` in TLF Auth.
-Set `OIDC_ISSUER=https://auth.leaders.tech`, `X_CLIENT_ID=tlfgemma`,
+Set `X_OIDC_ISSUER=https://auth.leaders.tech`, `X_CLIENT_ID=tlfgemma`,
 `X_SECRET` and `OPENROUTER_API_KEY` on the backend. Never use plain
 `CLIENT_ID` or `SECRET` deployment keys. Run one backend replica.
