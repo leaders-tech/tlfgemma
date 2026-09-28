@@ -8,9 +8,19 @@ export function closeBlocks(raw: string) {
   let text = raw;
   const fences = text.match(/^\s*```/gm) || [];
   if (fences.length % 2) text += "\n```";
-  // Repair only the common block-math case outside code fences.
-  const outsideCode = text.replace(/```[\s\S]*?```/g, "");
-  if ((outsideCode.match(/\$\$/g) || []).length % 2) text += "\n$$";
+  // Ignore code and escaped dollars; only close the current math delimiter.
+  const outsideCode = text
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/(`+)[\s\S]*?\1/g, "")
+    .replace(/\\./g, "");
+  let open = "";
+  for (const [delimiter] of outsideCode.matchAll(/\$+/g)) {
+    if (delimiter.length > 2) continue;
+    if (!open) open = delimiter;
+    else if (open === delimiter) open = "";
+  }
+  if (open === "$$") text += "\n$$";
+  if (open === "$") text = text.trimEnd() + "$";
   return text;
 }
 export function Answer({ text }: { text: string }) {

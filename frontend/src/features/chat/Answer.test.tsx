@@ -14,7 +14,20 @@ it("blocks raw HTML and external images", () => {
   expect(container.querySelector("script,img")).toBeNull();
   expect(container.querySelector('a[href^="javascript:"]')).toBeNull();
 });
-it("copies the exact original answer", async () => {
+it("renders a truncated inline integral even with trailing whitespace", () => {
+  const raw = String.raw`Тогда $I^2 = \int_{-\infty}^{+\infty} e^{-x^2} dx \cdot \int_{-\infty}^{+\infty} e^{-y^2} `;
+  expect(closeBlocks(raw)).toBe(raw.trimEnd() + "$");
+  const { container } = render(<Answer text={raw} />);
+  expect(container.querySelector(".katex")).not.toBeNull();
+  expect(container.querySelector(".katex-error")).toBeNull();
+});
+it("ignores escaped dollars and code while keeping completed math unchanged", () => {
+  for (const raw of [String.raw`Price: \$5`, "`$x`", "```sh\n$HOME\n```", "$x$ and $$y$$", "$$x + $y"]) {
+    expect(closeBlocks(raw)).toBe(raw === "$$x + $y" ? raw + "\n$$" : raw);
+  }
+  expect(closeBlocks("`$code` and $x")).toBe("`$code` and $x$");
+});
+it.each(["```python\nx", "$x^2 "])("copies the exact original answer %s", async (answer) => {
   const writeText = vi.fn().mockResolvedValue(undefined);
   Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
   render(
@@ -25,7 +38,7 @@ it("copies the exact original answer", async () => {
           user_id: 1,
           request_id: "a",
           prompt: "hello",
-          answer: "```python\nx",
+          answer,
           status: "complete",
           error: null,
           truncated: 1,
@@ -36,6 +49,6 @@ it("copies the exact original answer", async () => {
     />,
   );
   fireEvent.click(screen.getByText("Copy raw"));
-  expect(writeText).toHaveBeenCalledWith("```python\nx");
+  expect(writeText).toHaveBeenCalledWith(answer);
   expect(await screen.findByText("Copied")).toBeVisible();
 });
