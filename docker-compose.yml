@@ -1,0 +1,38 @@
+# This file is the platform-safe Docker shape for tlfpaas and same-origin production routing.
+# Edit this file only when the deployment service list or runtime container contract changes.
+# Copy a service block here when you add another small deployable service.
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      APP_MODE: ${APP_MODE}
+      APP_DEBUG_LOGS: ${APP_DEBUG_LOGS}
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8081
+      DB_PATH: ${DB_PATH}
+      COOKIE_SECRET: ${COOKIE_SECRET}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN}
+    expose:
+      - "8081"
+    labels:
+      tlfpaas.route: "backend"
+    restart: unless-stopped
+    volumes:
+      - sqlite_data:/data
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    depends_on:
+      - backend
+    expose:
+      - "8080"
+    labels:
+      tlfpaas.route: "frontend"
+    restart: unless-stopped
+
+volumes:
+  sqlite_data:

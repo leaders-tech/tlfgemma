@@ -1,0 +1,18 @@
+# This file makes local Docker testing look like tlfpaas path-based routing.
+# Edit this file when local `/api` or `/ws` routing rules change.
+# Copy this file when you add another tiny local gateway config.
+:80 {
+  @api path /api /api/*
+  handle @api {
+    reverse_proxy backend:8081
+  }
+
+  @ws path /ws /ws/*
+  handle @ws {
+    reverse_proxy backend:8081
+  }
+
+  handle {
+    reverse_proxy frontend:8080
+  }
+}
