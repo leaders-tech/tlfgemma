@@ -2,13 +2,15 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../app/auth";
 import { postJson } from "../shared/api";
-import type { History, Message, User, WsMessage } from "../shared/types";
+import type { Conversation, History, Message, User, WsMessage } from "../shared/types";
 import { ModelSettingsPanel } from "../features/chat/ModelSettingsPanel";
 import { HistoryList, mergeMessages } from "../features/chat/History";
 export function ReviewPage() {
   const { user } = useAuth();
   const [users, setUsers] = useState<User[]>([]),
     [selected, setSelected] = useState<User | null>(null);
+  const [chats, setChats] = useState<Conversation[]>([]);
+  const [conversationId, setConversationId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [after, setAfter] = useState<number | null>(null),
     [before, setBefore] = useState<number | null>(null);
@@ -46,13 +48,28 @@ export function ReviewPage() {
     return () => window.removeEventListener("gemma.event", receive);
   }, []);
   useEffect(() => {
+    let cancelled = false;
+    setChats([]);
+    if (selected)
+      void postJson<{ conversations: Conversation[] }>("/conversations/list", { user_id: selected.id })
+        .then((data) => {
+          if (!cancelled) setChats(data.conversations);
+        })
+        .catch((e) => {
+          if (!cancelled) setError(e.message);
+        });
+    return () => {
+      cancelled = true;
+    };
+  }, [selected, reset]);
+  useEffect(() => {
     revision.current++;
     const version = revision.current;
     setMessages([]);
     setBefore(null);
     if (!selected) return;
     const load = () =>
-      postJson<History>("/chat/history", { user_id: selected.id })
+      postJson<History>("/chat/history", { user_id: selected.id, conversation_id: conversationId })
         .then((data) => {
           if (version === revision.current) {
             setMessages((old) => mergeMessages(old, data.messages));
@@ -68,7 +85,7 @@ export function ReviewPage() {
       revision.current++;
       window.clearInterval(timer);
     };
-  }, [selected, reset]);
+  }, [selected, reset, conversationId]);
   return (
     <main className="review workspace">
       <div className="workspace-heading">
@@ -121,7 +138,14 @@ export function ReviewPage() {
           <input id="search" type="search" placeholder="Search by email" value={search} onChange={(e) => setSearch(e.target.value)} />
           <div className="user-list">
             {users.map((item) => (
-              <button className={selected?.id === item.id ? "selected" : ""} key={item.id} onClick={() => setSelected(item)}>
+              <button
+                className={selected?.id === item.id ? "selected" : ""}
+                key={item.id}
+                onClick={() => {
+                  setConversationId(null);
+                  setSelected(item);
+                }}
+              >
                 <strong>{item.email}</strong>
                 <small>{item.roles.join(", ") || "student"}</small>
               </button>
@@ -146,12 +170,22 @@ export function ReviewPage() {
           {selected ? (
             <>
               <h2>{selected.email}</h2>
+              <label htmlFor="review-conversation">Conversation</label>
+              <select id="review-conversation" value={conversationId ?? ""} onChange={(e) => setConversationId(e.target.value ? Number(e.target.value) : null)}>
+                <option value="">All conversations</option>
+                {chats.map((chat) => (
+                  <option key={chat.id} value={chat.id}>
+                    {chat.title}
+                    {chat.archived ? " (Archived)" : ""}
+                  </option>
+                ))}
+              </select>
               <p className="muted">Read-only history · Updates every 5 seconds</p>
               {before && (
                 <button
                   onClick={() => {
                     const version = revision.current;
-                    void postJson<History>("/chat/history", { user_id: selected.id, before })
+                    void postJson<History>("/chat/history", { user_id: selected.id, before, conversation_id: conversationId })
                       .then((data) => {
                         if (version === revision.current) {
                           setMessages((old) => mergeMessages(old, data.messages));

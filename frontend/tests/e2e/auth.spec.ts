@@ -44,7 +44,7 @@ test("teacher reviews student history and has their own limited chat", async ({ 
   await page.getByRole("link", { name: "Review chats" }).click();
   await page.getByLabel("Find a user").fill("review-student");
   await page.getByRole("button", { name: /review-student@example.org/ }).click();
-  await expect(page.getByText("review me", { exact: true })).toBeVisible();
+  await expect(page.locator("article .prompt")).toHaveText("review me");
   await expect(page.getByText("Clear all history", { exact: true })).toHaveCount(0);
   await student.close();
 });
@@ -96,4 +96,31 @@ test("admin changes the shared model while students see the update", async ({ pa
   await expect(student.getByLabel("Current model")).toContainText("google/gemma-4-26b-a4b-it");
   await expect(student.locator("article .answer-model")).toHaveText("google/gemma-4-31b-it");
   await student.close();
+});
+
+test("conversations separate messages, share limits and can be archived and restored", async ({ page }) => {
+  await login(page, "conversations@example.org");
+  const sidebar = page.getByRole("complementary", { name: "Conversations" });
+  await page.getByLabel("Your message").fill("First topic");
+  await page.getByRole("button", { name: /Send message/ }).click();
+  await expect(page.locator(".katex")).toBeVisible();
+  await sidebar.getByRole("button", { name: "New chat", exact: true }).click();
+  await expect(page.locator("article")).toHaveCount(0);
+  await expect(page.getByText("59", { exact: true })).toBeVisible();
+  await page.getByLabel("Your message").fill("Second topic");
+  await page.getByRole("button", { name: /Send message/ }).click();
+  await expect(page.locator(".katex")).toBeVisible();
+  await expect(page.getByText("58", { exact: true })).toBeVisible();
+  await sidebar.getByRole("button", { name: "Open chat: First topic", exact: true }).click();
+  await expect(page.locator("article .prompt")).toHaveText("First topic");
+  await sidebar.getByRole("button", { name: "Archive First topic", exact: true }).click();
+  await expect(page.getByLabel("Your message")).toBeDisabled();
+  await expect(page.locator("article .prompt")).toHaveText("First topic");
+  await page.reload();
+  await sidebar.getByRole("button", { name: "Archived", exact: true }).click();
+  await sidebar.getByRole("button", { name: "Open chat: First topic", exact: true }).click();
+  await expect(page.locator("article .prompt")).toHaveText("First topic");
+  await sidebar.getByRole("button", { name: "Restore First topic", exact: true }).click();
+  await expect(page.getByLabel("Your message")).toBeEnabled();
+  await expect(page.getByText("58", { exact: true })).toBeVisible();
 });

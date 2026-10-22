@@ -9,6 +9,7 @@ from backend.db.migrations import run_migrations
 from backend.db.store import Store
 from backend.http.middleware import cors_middleware, error_middleware, request_logging_middleware
 from backend.http.routes import setup_api_routes
+from backend.http.conversation_routes import setup_conversation_routes
 from backend.http.model_routes import setup_model_routes
 from backend.logging_config import configure_logging
 from backend.ws.hub import WebSocketHub
@@ -47,6 +48,7 @@ def create_app(settings=None):
     app["generations"] = {}
     setup_auth_routes(app)
     setup_api_routes(app)
+    setup_conversation_routes(app)
     setup_model_routes(app)
     setup_ws_routes(app)
     app.on_startup.append(startup)

@@ -1,6 +1,6 @@
 # TLF-Gemma
 
-A small competition workspace built with React, aiohttp and SQLite. Everyone signs in through TLF Auth. Each user has one private chat; `teacher` and `admin` can read all users' histories. Only `admin` can clear all messages and reset every quota.
+A small competition workspace built with React, aiohttp and SQLite. Everyone signs in through TLF Auth. Each user has private conversations in a left sidebar; `teacher` and `admin` can read all users' histories. Only `admin` can clear all messages and reset every quota.
 
 ## Local development
 
@@ -62,7 +62,8 @@ For local Docker, copy `.docker.env.example` to `.docker.env`, set `APP_MODE=dev
 - 60 accepted requests in a rolling 60 minutes, including teacher/admin test chats. One active generation per user. Failed/interrupted requests with no answer refund their slot; partial answers still count.
 - The server reserves quota atomically. A UUID request ID prevents duplicate model calls after a network retry. Browser disconnects do not cancel answers. A restart marks unfinished answers interrupted and preserves saved partial text.
 - Markdown, code and KaTeX are rendered safely; raw HTML and images are disabled. Only unfinished triple-backtick and block-math delimiters get a small display-only repair. **Copy raw** copies the original answer, including truncation.
-- Histories have 50-item pages and cannot be edited. Admin reset cancels active requests, deletes all history and resets all quotas while keeping users and sessions.
+- Create conversations with **New chat**; their titles come from the first message. **Archive** hides a conversation from the active list without deleting it or resetting limits. Archived chats are read-only until **Restore**. Staff can filter user history by conversation, including archives. Existing messages are preserved in **Previous chat**.
+- Histories have 50-item pages and cannot be edited. Admin reset cancels active requests, deletes all conversations and history and resets all quotas while keeping users and sessions.
 
 ## API
 
@@ -73,15 +74,18 @@ All browser JSON calls are POST and return `{ok: true, data: ...}` or `{ok: fals
 | `/api/auth/login` | Return OIDC authorization URL and bind state to the browser. |
 | GET `/api/auth/oidc/callback` | Validate code, state, nonce and identity; create session and redirect home. |
 | `/api/auth/me`, `/api/auth/logout` | Read or revoke the current session. |
-| `/api/chat/send` | Accept `{text, request_id}` and return the exchange plus quota. |
-| `/api/chat/history` | Read `{user_id?, before?}`; cross-user reads require teacher/admin. |
+| `/api/chat/send` | Accept `{text, request_id, conversation_id?}` and return the exchange plus quota. |
+| `/api/chat/history` | Read `{user_id?, before?, conversation_id?}`; cross-user reads require teacher/admin. |
+| `/api/conversations/list` | List own conversations, including archives; optional `{user_id}` requires staff for another user. |
+| `/api/conversations/create` | Create an empty private conversation. |
+| `/api/conversations/archive` | Set `{conversation_id, archived}` for an owned conversation. |
 | `/api/chat/model` | Read the current and default models (signed-in users). |
 | `/api/admin/model` | Save `{model}` for new requests (admin only). |
 | `/api/chat/quota` | Return remaining count, server time and next slot time. |
 | `/api/review/users` | Search `{search?, after?}`; teacher/admin only. |
 | `/api/admin/clear` | Admin-only reset with `{confirm: "CLEAR ALL HISTORY"}`. |
 
-`/ws` authenticates with the session cookie and validates Origin. `chat.updated` contains the full saved exchange, monotonically increasing version and quota; `history.cleared` invalidates history. `model.changed` updates the shared model label. Reconnect reloads the latest persisted messages. No OIDC tokens or model API key reach the browser.
+`/ws` authenticates with the session cookie and validates Origin. `chat.updated` contains the full saved exchange, monotonically increasing version and quota; `history.cleared` invalidates history. `conversations.changed` refreshes the owner’s sidebar. Quotas and the active-generation lock are shared across all conversations. `model.changed` updates the shared model label. Reconnect reloads the latest persisted messages. No OIDC tokens or model API key reach the browser.
 
 ## Checks
 

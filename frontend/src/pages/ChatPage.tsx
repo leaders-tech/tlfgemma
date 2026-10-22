@@ -2,10 +2,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../app/auth";
 import { ApiError, postJson } from "../shared/api";
-import type { History, Message, Quota, WsMessage } from "../shared/types";
+import type { Conversation, History, Message, Quota, WsMessage } from "../shared/types";
 import { ModelBadge } from "../features/chat/ModelBadge";
 import { HistoryList, mergeMessages } from "../features/chat/History";
-export function ChatPage() {
+export function ChatPage({ conversation }: { conversation?: Conversation }) {
   const { status } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [quota, setQuotaState] = useState<Quota | null>(null);
@@ -25,7 +25,10 @@ export function ChatPage() {
   const load = useCallback(async () => {
     const version = epoch.current;
     try {
-      const [history, remaining] = await Promise.all([postJson<History>("/chat/history"), postJson<Quota>("/chat/quota")]);
+      const [history, remaining] = await Promise.all([
+        postJson<History>("/chat/history", conversation ? { conversation_id: conversation.id } : {}),
+        postJson<Quota>("/chat/quota"),
+      ]);
       if (version !== epoch.current) return;
       setMessages((previous) => mergeMessages(previous, history.messages));
       setBefore(history.before);
@@ -41,7 +44,7 @@ export function ChatPage() {
     const receive = (event: Event) => {
       const data = (event as CustomEvent<WsMessage>).detail;
       if (data.type === "chat.updated") {
-        setMessages((previous) => mergeMessages(previous, [data.message]));
+        if (!conversation || data.message.conversation_id === conversation.id) setMessages((previous) => mergeMessages(previous, [data.message]));
         setQuota(data.quota);
       }
       if (data.type === "ws.ready" || data.type === "history.cleared") {
@@ -66,18 +69,23 @@ export function ChatPage() {
     };
   }, [load]);
   useEffect(() => {
-    if (follow.current) bottom.current?.scrollIntoView({ behavior: "smooth" });
+    const history = bottom.current?.parentElement;
+    if (follow.current && history) history.scrollTo?.({ top: history.scrollHeight, behavior: "smooth" });
   }, [messages]);
   const remaining = 1000 - Array.from(text).length;
-  const active = messages.some((item) => item.status === "streaming");
+  const active = quota?.active || messages.some((item) => item.status === "streaming");
   async function submit() {
-    if (sending || active || remaining < 0 || !text.trim()) return;
+    if (conversation?.archived || sending || active || remaining < 0 || !text.trim()) return;
     const version = epoch.current;
     if (!pending.current || pending.current.text !== text) pending.current = { text, id: crypto.randomUUID() };
     setSending(true);
     setError("");
     try {
-      const data = await postJson<{ message: Message; quota: Quota }>("/chat/send", { text, request_id: pending.current.id });
+      const data = await postJson<{ message: Message; quota: Quota }>("/chat/send", {
+        text,
+        request_id: pending.current.id,
+        ...(conversation ? { conversation_id: conversation.id } : {}),
+      });
       if (version !== epoch.current) return;
       setMessages((previous) => mergeMessages(previous, [data.message]));
       setQuota(data.quota);
@@ -100,6 +108,12 @@ export function ChatPage() {
         <div>
           <div className="eyebrow">YOUR WORKSPACE</div>
           <h1>My chat</h1>
+          {conversation && (
+            <p className="muted">
+              {conversation.title}
+              {conversation.archived ? " · Archived · Read only" : ""}
+            </p>
+          )}
         </div>
         <ModelBadge />
       </div>
@@ -127,7 +141,7 @@ export function ChatPage() {
             onClick={() => {
               const version = epoch.current;
               follow.current = false;
-              void postJson<History>("/chat/history", { before })
+              void postJson<History>("/chat/history", { before, ...(conversation ? { conversation_id: conversation.id } : {}) })
                 .then((data) => {
                   if (version === epoch.current) {
                     setMessages((old) => mergeMessages(old, data.messages));
@@ -177,7 +191,7 @@ export function ChatPage() {
           id="message"
           placeholder="Ask Gemma something…"
           value={text}
-          disabled={sending}
+          disabled={sending || !!conversation?.archived}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
@@ -192,7 +206,9 @@ export function ChatPage() {
           </span>
           <button
             className="primary"
-            disabled={sending || active || remaining < 0 || !text.trim() || !quota || quota.remaining === 0 || status !== "connected"}
+            disabled={
+              !!conversation?.archived || sending || active || remaining < 0 || !text.trim() || !quota || quota.remaining === 0 || status !== "connected"
+            }
           >
             {sending ? "Sending…" : active ? "Writing…" : "Send message"}
             <span aria-hidden="true"> ↑</span>

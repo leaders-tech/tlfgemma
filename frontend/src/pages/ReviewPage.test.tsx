@@ -29,7 +29,9 @@ beforeEach(() => {
       ? { model: "google/gemma-4-26b-a4b-it", default_model: "google/gemma-4-26b-a4b-it" }
       : path === "/review/users"
         ? { users: [{ id: 2, email: "student@example.org", roles: [] }], after: null }
-        : { messages: [], before: null },
+        : path === "/conversations/list"
+          ? { conversations: [] }
+          : { messages: [], before: null },
   );
 });
 it("lets teachers inspect users without reset controls", async () => {

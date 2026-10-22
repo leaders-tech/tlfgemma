@@ -5,6 +5,7 @@ import hashlib
 import json
 from datetime import UTC, datetime, timedelta
 from backend.http.json_api import AppError
+from backend.db import conversations
 from backend.db.model_settings import read_model, save_model
 
 
@@ -82,6 +83,7 @@ class Store:
         )
         return {
             "remaining": max(0, 60 - row["used"]),
+            "active": bool(await self.one("SELECT id FROM exchanges WHERE user_id=? AND status='streaming'", (user_id,))),
             "next_available_at": stamp(datetime.fromisoformat(row["oldest"]) + timedelta(hours=1)) if row["oldest"] else None,
             "server_time": stamp(at),
         }
@@ -98,25 +100,49 @@ class Store:
         async with self.lock:
             await save_model(self.db, model)
 
-    async def reserve(self, user_id, request_id, prompt):
+    async def conversations(self, user_id):
+        async with self.lock:
+            return await conversations.listing(self, user_id)
+
+    async def create_conversation(self, user_id):
+        async with self.lock:
+            row = await conversations.create(self, user_id, stamp())
+            await self.db.commit()
+            return row
+
+    async def archive_conversation(self, user_id, conversation_id, archived):
+        async with self.lock:
+            await conversations.archive(self, user_id, conversation_id, archived)
+            await self.db.commit()
+
+    async def reserve(self, user_id, request_id, prompt, conversation_id=None):
         async with self.lock:
             await self.db.execute("BEGIN IMMEDIATE")
             try:
                 existing = await self.one("SELECT * FROM exchanges WHERE user_id=? AND request_id=?", (user_id, request_id))
                 if existing:
-                    if existing["prompt"] != prompt:
+                    if existing["prompt"] != prompt or (conversation_id is not None and existing["conversation_id"] != conversation_id):
                         raise AppError(409, "request_conflict", "This request ID already has a different message.")
                     await self.db.commit()
                     return dict(existing), False
                 if await self.one("SELECT id FROM exchanges WHERE user_id=? AND status='streaming'", (user_id,)):
                     raise AppError(409, "busy", "Please wait for your current answer.")
+                if conversation_id is None:
+                    conversation = await self.one("SELECT * FROM conversations WHERE user_id=? AND archived=0 ORDER BY id LIMIT 1", (user_id,))
+                    if not conversation:
+                        conversation = await conversations.create(self, user_id, stamp())
+                    conversation_id = conversation["id"]
+                conversation = await conversations.require_conversation(self, user_id, conversation_id)
+                if conversation["archived"]:
+                    raise AppError(409, "archived", "Restore this conversation before sending a message.")
                 at = now()
                 if (await self._quota(user_id, at))["remaining"] == 0:
                     raise AppError(429, "rate_limit", "You have used all 60 messages. Please wait.")
                 cursor = await self.db.execute(
-                    "INSERT INTO exchanges(user_id,request_id,prompt,status,created_at,updated_at,model) VALUES (?,?,?,'streaming',?,?,?)",
-                    (user_id, request_id, prompt, stamp(at), stamp(at), await read_model(self.db)),
+                    "INSERT INTO exchanges(user_id,request_id,prompt,status,created_at,updated_at,model,conversation_id) VALUES (?,?,?,'streaming',?,?,?,?)",
+                    (user_id, request_id, prompt, stamp(at), stamp(at), await read_model(self.db), conversation_id),
                 )
+                await self.db.execute("UPDATE conversations SET title=? WHERE id=? AND title='New chat'", (prompt.strip()[:60], conversation_id))
                 row = await self.one("SELECT * FROM exchanges WHERE id=?", (cursor.lastrowid,))
                 await self.db.commit()
                 return dict(row), True
@@ -143,10 +169,12 @@ class Store:
             )
             await self.db.commit()
 
-    async def history(self, user_id, before=None):
+    async def history(self, user_id, before=None, conversation_id=None):
         async with self.lock:
+            if conversation_id is not None:
+                await conversations.require_conversation(self, user_id, conversation_id)
             async with self.db.execute(
-                "SELECT * FROM exchanges WHERE user_id=? AND (? IS NULL OR id<?) ORDER BY id DESC LIMIT 51", (user_id, before, before)
+                "SELECT * FROM exchanges WHERE user_id=? AND (? IS NULL OR id<?) AND (? IS NULL OR conversation_id=?) ORDER BY id DESC LIMIT 51", (user_id, before, before, conversation_id, conversation_id)
             ) as cursor:
                 rows = [dict(row) for row in await cursor.fetchall()]
             return {"messages": list(reversed(rows[:50])), "before": rows[49]["id"] if len(rows) > 50 else None}
@@ -160,4 +188,5 @@ class Store:
     async def clear(self):
         async with self.lock:
             await self.db.execute("DELETE FROM exchanges")
+            await self.db.execute("DELETE FROM conversations")
             await self.db.commit()

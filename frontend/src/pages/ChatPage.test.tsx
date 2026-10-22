@@ -23,7 +23,7 @@ const message = {
   version: 1,
   created_at: new Date().toISOString(),
 };
-function page() {
+function page(conversation?: { id: number; title: string; archived: number; created_at: string }) {
   return render(
     <AuthContext.Provider
       value={{
@@ -36,7 +36,7 @@ function page() {
         reloadUser: vi.fn(),
       }}
     >
-      <ChatPage />
+      <ChatPage conversation={conversation} />
     </AuthContext.Provider>,
   );
 }
@@ -98,4 +98,23 @@ it("does not overwrite a newer quota with an older stream event", async () => {
   act(() => update(58, "2099-01-01T00:00:02.000000+00:00"));
   act(() => update(59, "2099-01-01T00:00:01.000000+00:00"));
   expect(screen.getByText("58")).toBeVisible();
+});
+
+it("ignores another conversation's text while updating the shared quota", async () => {
+  page({ id: 10, title: "Math", archived: 0, created_at: "" });
+  await screen.findByText("60");
+  act(() =>
+    window.dispatchEvent(
+      new CustomEvent("gemma.event", {
+        detail: {
+          type: "chat.updated",
+          message: { ...message, conversation_id: 20 },
+          quota: { ...quota, remaining: 59, active: true },
+        },
+      }),
+    ),
+  );
+  expect(screen.queryByText("first")).toBeNull();
+  expect(screen.getByText("59")).toBeVisible();
+  expect(screen.getByRole("button", { name: /Writing/ })).toBeDisabled();
 });

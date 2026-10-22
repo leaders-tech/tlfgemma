@@ -24,7 +24,7 @@ async def send(request):
     if not request.app["settings"].openrouter_api_key:
         raise AppError(503, "model_not_configured", "The model is not configured yet.")
     async with request.app["operations"]:
-        row, created = await request.app["store"].reserve(user["id"], request_id, prompt)
+        row, created = await request.app["store"].reserve(user["id"], request_id, prompt, integer(data, "conversation_id"))
         if created:
             task = asyncio.create_task(generate(request.app, row))
             request.app["generations"][row["id"]] = task
@@ -52,7 +52,7 @@ async def history(request):
     target = integer(data, "user_id", user["id"])
     if target != user["id"] and not can_review(user):
         raise AppError(403, "not_allowed", "You can only read your own chat.")
-    return ok(await request.app["store"].history(target, integer(data, "before")))
+    return ok(await request.app["store"].history(target, integer(data, "before"), integer(data, "conversation_id")))
 
 
 async def quota(request):

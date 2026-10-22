@@ -5,7 +5,7 @@ import { vi, it, expect } from "vitest";
 import { App } from "./App";
 import { AuthContext } from "./auth";
 import type { User } from "../shared/types";
-vi.mock("../pages/ChatPage", () => ({ ChatPage: () => <h1>My chat</h1> }));
+vi.mock("../pages/ChatWorkspace", () => ({ ChatWorkspace: () => <h1>My chat</h1> }));
 vi.mock("../pages/ReviewPage", () => ({ ReviewPage: () => <h1>Review chats</h1> }));
 function renderApp(path: string, user: User | null) {
   return render(

@@ -3,7 +3,7 @@ import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import { useState } from "react";
 import { useAuth } from "./auth";
 import { LoginPage } from "../pages/LoginPage";
-import { ChatPage } from "../pages/ChatPage";
+import { ChatWorkspace } from "../pages/ChatWorkspace";
 import { ReviewPage } from "../pages/ReviewPage";
 export function App() {
   const { user, loading, error, logout } = useAuth();
@@ -41,7 +41,7 @@ export function App() {
       )}
       <Routes>
         <Route path="/login" element={user ? <Navigate to="/" replace /> : <LoginPage />} />
-        <Route path="/" element={user ? <ChatPage key={user.id} /> : <Navigate to="/login" replace />} />
+        <Route path="/" element={user ? <ChatWorkspace key={user.id} /> : <Navigate to="/login" replace />} />
         <Route path="/review" element={!user ? <Navigate to="/login" replace /> : reviewer ? <ReviewPage /> : <Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
