@@ -46,13 +46,35 @@ async def test_unicode_boundaries_and_truncation(client, identity, app):
     assert last["answer"] == "🦊" * 1000 and last["truncated"] == 1
 
 
-async def test_errors_refund_only_empty_answers(client, identity, app):
+async def test_errors_refund_only_empty_answers(client, identity, app, caplog):
     user, headers = await identity()
     for text, remaining in [("fail", 60), ("partial", 59)]:
         await send(client, headers, text)
         await finish(app)
         assert (await app["store"].quota(user["id"]))["remaining"] == remaining
         assert (await app["store"].history(user["id"]))["messages"][-1]["status"] == "error"
+    assert "HTTP 503" in caplog.text
+    assert "OpenRouter generation failed" in caplog.text
+    assert "received_chars=0" in caplog.text
+
+
+def test_provider_error_redacts_secrets_and_prompt(test_settings):
+    from backend.chat import provider_error
+    test_settings.openrouter_api_key = "private-key"
+    result = provider_error({"error": {"message": "private-key secret prompt\n" + "x" * 1000}},
+                            {"prompt": "secret prompt"}, test_settings)
+    assert "private-key" not in result and "secret prompt" not in result
+    assert "\n" not in result and len(result) < 520
+
+
+async def test_expired_key_logged_with_debug_disabled(client, identity, app, caplog):
+    import logging
+    user, headers = await identity()
+    with caplog.at_level(logging.WARNING, logger="backend.chat"):
+        await send(client, headers, "expired-key")
+        await finish(app)
+    assert "HTTP 401" in caplog.text and "API key expired." in caplog.text
+    assert (await app["store"].quota(user["id"]))["remaining"] == 60
 
 
 async def test_idempotency_and_concurrency(client, identity, app, provider):

@@ -89,6 +89,8 @@ class FakeServices:
         data = await request.json()
         self.requests.append(data)
         text = data["messages"][0]["content"]
+        if text == "expired-key":
+            return web.json_response({"error": {"message": "API key expired.", "code": 401}}, status=401)
         if text == "fail":
             return web.json_response({"error": "test failure"}, status=503)
         response = web.StreamResponse(headers={"Content-Type": "text/event-stream"})

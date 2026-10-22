@@ -2,7 +2,21 @@
 
 import asyncio
 import json
+import logging
 from aiohttp import ClientTimeout
+
+logger = logging.getLogger(__name__)
+
+
+def provider_error(payload, exchange, settings):
+    """Keep only a bounded provider message, excluding credentials and user text."""
+    error = payload.get("error", {}) if isinstance(payload, dict) else {}
+    message = error.get("message", "Provider error") if isinstance(error, dict) else "Provider error"
+    message = str(message)
+    for private in (settings.openrouter_api_key, exchange["prompt"]):
+        if private:
+            message = message.replace(private, "[redacted]")
+    return repr(message[:500])
 
 
 async def generate(app, exchange):
@@ -28,6 +42,12 @@ async def generate(app, exchange):
             },
             timeout=ClientTimeout(total=120, sock_read=30),
         ) as response:
+            if response.status >= 400:
+                try:
+                    payload = json.loads(await response.content.read(16384))
+                except (ValueError, UnicodeError):
+                    payload = {}
+                raise ValueError(f"HTTP {response.status}: {provider_error(payload, exchange, settings)}")
             response.raise_for_status()
             done = False
             async for raw in response.content:
@@ -40,7 +60,7 @@ async def generate(app, exchange):
                     break
                 data = json.loads(value)
                 if data.get("error"):
-                    raise ValueError("Provider error")
+                    raise ValueError(provider_error(data, exchange, settings))
                 choices = data.get("choices", [])
                 if not choices:
                     continue
@@ -62,7 +82,11 @@ async def generate(app, exchange):
     except asyncio.CancelledError:
         status, error = "interrupted", "The answer was interrupted."
         raise
-    except Exception:
+    except Exception as exc:
+        # Do not log tracebacks or request objects: they may contain credentials.
+        detail = provider_error({"error": {"message": str(exc)}}, exchange, settings)
+        logger.error("OpenRouter generation failed exchange=%s model=%s received_chars=%s exception=%s detail=%s",
+                     exchange["id"], exchange["model"], len(answer), type(exc).__name__, detail)
         status, error = "error", "The model could not finish this answer. Please try again."
     finally:
         await save(status, error)
